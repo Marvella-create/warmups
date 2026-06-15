@@ -1,0 +1,311 @@
+{
+  "name": "warmup-lexicon (разминка по имени)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "n1",
+      "name": "Сообщение от Маши",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $input.first().json;\nconst text = String(msg.message && msg.message.text ? msg.message.text : '').trim();\nconst chatId = msg.message && msg.message.chat ? msg.message.chat.id : null;\nconst studentName = text.replace(/^разминка\\s*/i, '').trim();\nreturn [{ json: { studentName, chatId } }];"
+      },
+      "id": "n2",
+      "name": "Подготовка",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ВСТАВЬ_ID_ТАБЛИЦЫ_ЛЕКСИКИ"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ВСТАВЬ_ИМЯ_ЛИСТА"
+        },
+        "options": {}
+      },
+      "id": "n3",
+      "name": "Читать лексику",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = $('Подготовка').first().json;\nconst studentName = String(prep.studentName || '').trim();\nconst chatId = prep.chatId;\nconst target = studentName.toLowerCase();\n\n// Google Sheets node v4.5 doesn't return row_number automatically.\n// Rows come in sheet order starting from row 2 (row 1 = header).\nconst rows = $input.all().map((i, idx) => ({ ...i.json, _rowNumber: idx + 2 }));\nconst matched = rows.filter(r => {\n  const student = String(r['Ученик'] || '').trim().toLowerCase();\n  const done = String(r['Повторено'] || '').trim();\n  return student === target && done === '';\n});\n\nconst words = matched.map(r => String(r['Слово / фраза'] || '').trim()).filter(Boolean);\nconst rowNumbers = matched.map(r => r._rowNumber);\nconst today = new Date().toLocaleDateString('ru-RU');\n\nconst prompt = [\n  'Ты — ассистент преподавателя английского. На вход — слова и фразы, которые ученик ' + studentName + ' встретил на последних уроках: спонтанная лексика, которую преподаватель выхватила в живой речи.',\n  '',\n  'Сделай из них разминку на 5 минут для НАЧАЛА следующего урока. Цель — чтобы ученик активно вспомнил и проговорил эту лексику, а не просто узнал перевод. Аудитория — взрослый, разговорный American English. Упор на говорение.',\n  '',\n  'Формат вывода (это шпаргалка для преподавателя, не текст для ученика):',\n  '',\n  '1. Быстрый recall — перечисли слова, к каждому дай микро-подсказку или наводящий вопрос, чтобы ученик сам вспомнил значение и употребление. Готовый перевод не давай.',\n  '2. Одно speaking-задание, где ученик должен использовать минимум 3-4 слова из списка в реальном взрослом контексте (работа, фильмы, музыка, впечатления — выбери уместный по смыслу слов). Сформулируй как живую ситуацию или вопрос.',\n  '3. Короткий model answer от себя (2-3 предложения) — ориентир для преподавателя с примером естественного употребления.',\n  '',\n  'Без вступлений и воды. Сразу разминка. Тон — как заметка коллеге, не методичка.',\n  '',\n  'Слова:',\n  words.join(', ')\n].join('\\n');\n\nreturn [{ json: { studentName, chatId, count: words.length, rowNumbers, today, promptText: prompt } }];"
+      },
+      "id": "n4",
+      "name": "Собрать разминку",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n5",
+      "name": "Есть слова?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { 'model': 'anthropic/claude-3.5-sonnet', 'messages': [ { 'role': 'user', 'content': $json.promptText } ] } }}",
+        "options": {}
+      },
+      "id": "n6",
+      "name": "Claude (OpenRouter)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Собрать разминку').item.json.chatId }}",
+        "text": "={{ $json.choices[0].message.content }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n7",
+      "name": "Отправить разминку",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1320,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const src = $('Собрать разминку').first().json;\nconst today = src.today;\nconst rns = src.rowNumbers || [];\nreturn rns.map(rn => ({ json: { row_number: rn, 'Повторено': today } }));"
+      },
+      "id": "n8",
+      "name": "Строки для апдейта",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ВСТАВЬ_ID_ТАБЛИЦЫ_ЛЕКСИКИ"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ВСТАВЬ_ИМЯ_ЛИСТА"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "row_number"
+          ],
+          "value": {
+            "row_number": "={{ $json.row_number }}",
+            "Повторено": "={{ $json['Повторено'] }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "n9",
+      "name": "Отметить «Повторено»",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1760,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Собрать разминку').item.json.chatId }}",
+        "text": "={{ 'По ученику ' + $('Собрать разминку').item.json.studentName + ' новых слов для разминки нет — всё уже повторили.' }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n10",
+      "name": "Слов нет",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1100,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Сообщение от Маши": {
+      "main": [
+        [
+          {
+            "node": "Подготовка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Подготовка": {
+      "main": [
+        [
+          {
+            "node": "Читать лексику",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Читать лексику": {
+      "main": [
+        [
+          {
+            "node": "Собрать разминку",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Собрать разминку": {
+      "main": [
+        [
+          {
+            "node": "Есть слова?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Есть слова?": {
+      "main": [
+        [
+          {
+            "node": "Claude (OpenRouter)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Слов нет",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude (OpenRouter)": {
+      "main": [
+        [
+          {
+            "node": "Отправить разминку",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Отправить разминку": {
+      "main": [
+        [
+          {
+            "node": "Строки для апдейта",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Строки для апдейта": {
+      "main": [
+        [
+          {
+            "node": "Отметить «Повторено»",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
