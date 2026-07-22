@@ -99,7 +99,8 @@
         "chatId": "133724864",
         "text": "={{ '🔁 Recycling · ' + $('Собрать квизы').item.json.student + '\\n\\n' + $json.choices[0].message.content }}",
         "additionalFields": {
-          "appendAttribution": false
+          "appendAttribution": false,
+          "parseMode": "None"
         }
       },
       "id": "dfba013f-d5c7-418d-9a51-941eb55c4497",
