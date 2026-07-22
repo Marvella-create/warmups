@@ -97,10 +97,10 @@
     {
       "parameters": {
         "chatId": "133724864",
-        "text": "={{ '🔁 Recycling · ' + $('Собрать квизы').item.json.student + '\\n\\n' + $json.choices[0].message.content }}",
+        "text": "={{ '🔁 Recycling · ' + $json.studentEscaped + '\\n\\n' + $json.quizTextEscaped }}",
         "additionalFields": {
           "appendAttribution": false,
-          "parseMode": "None"
+          "parse_mode": "HTML"
         }
       },
       "id": "dfba013f-d5c7-418d-9a51-941eb55c4497",
@@ -108,7 +108,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        960,
+        1088,
         0
       ],
       "webhookId": "3942742a-2966-4e4e-b371-1e95b278382e",
@@ -128,7 +128,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1328,
+        1456,
         0
       ]
     },
@@ -260,7 +260,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        1568,
+        1696,
         0
       ],
       "credentials": {
@@ -269,6 +269,19 @@
           "name": "Google Sheets account"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeHtml(text) {\n  return String(text)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\nreturn {\n  json: {\n    ...$json,\n    studentEscaped: escapeHtml($('Собрать квизы').item.json.student),\n    quizTextEscaped: escapeHtml($json.choices[0].message.content)\n  }\n};"
+      },
+      "id": "7b6c5d5a-d0a4-4b5f-868c-fbca6ed9dcb4",
+      "name": "Экранировать для Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        0
+      ]
     }
   ],
   "pinData": {},
@@ -310,7 +323,7 @@
       "main": [
         [
           {
-            "node": "В drafts",
+            "node": "Экранировать для Telegram",
             "type": "main",
             "index": 0
           }
@@ -333,6 +346,17 @@
         [
           {
             "node": "Отметить «Квиз»",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Экранировать для Telegram": {
+      "main": [
+        [
+          {
+            "node": "В drafts",
             "type": "main",
             "index": 0
           }
