@@ -1,0 +1,361 @@
+{
+  "name": "recycling-quiz (недельный квиз в drafts)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 13
+            }
+          ]
+        }
+      },
+      "id": "2043f1ae-3aa3-4e1f-b450-f05e1a6b58d2",
+      "name": "Раз в неделю",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "13_souJ2oyvsf2F6wqsn8YybF72Nveh7bnv6LolIgV4U",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1493615087,
+          "mode": "list",
+          "cachedResultName": "Recycling",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/13_souJ2oyvsf2F6wqsn8YybF72Nveh7bnv6LolIgV4U/edit#gid=1493615087"
+        },
+        "options": {}
+      },
+      "id": "0217a8fd-9209-4029-85ce-995d7eb0802c",
+      "name": "Читать лексику",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WboljMyc67lphPqd",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\n\n// Группируем по ученику, берём только слова:\n// - с отмеченной галочкой \"В квиз\"\n// - с пустой колонкой \"Квиз\"\nconst byStudent = {};\n\nfor (const r of rows) {\n  const student = String(r['Ученик'] || '').trim();\n  const quizzed = String(r['Квиз'] || '').trim();\n  const word = String(r['Слово / фраза'] || '').trim();\n  const include = r['В квиз'];\n\n  if (!student || !word) continue;\n  if (quizzed !== '') continue;\n  if (include !== true) continue;\n\n  if (!byStudent[student]) {\n    byStudent[student] = {\n      words: [],\n      rowNumbers: []\n    };\n  }\n\n  byStudent[student].words.push(word);\n  byStudent[student].rowNumbers.push(r.row_number);\n}\n\nconst today = new Date().toLocaleDateString('ru-RU');\nconst out = [];\n\nfor (const student of Object.keys(byStudent)) {\n  const words = byStudent[student].words;\n\n  if (!words.length) continue;\n\n  const prompt = `\nYou are an experienced English teacher creating a short weekly vocabulary quiz.\n\nStudent: ${student}\n\nThe student has already learned these expressions in live lessons.\n\nThe goal is retrieval practice, not teaching.\n\nThe quiz will be sent directly to the student in Telegram.\n\nGENERAL RULES\n\n• Never translate.\n• Never explain vocabulary.\n• Use natural conversational American English.\n• Sound like a friendly teacher.\n• Keep the whole quiz short (3–5 minutes).\n• Every week's quiz should feel fresh.\n• Surprise the teacher with creative but realistic questions.\n\n────────────────────────\n\nCreate EXACTLY 5 questions.\n\nUse FIVE different task types.\n\nChoose naturally from:\n\n• Fill in the blank\n• Multiple choice\n• Rewrite\n• What would you say?\n• Finish the dialogue\n• Choose the most natural sentence\n• Spot the mistake\n• Mini scenario\n• Finish the sentence\n• React naturally\n\nNever repeat the same task type.\n\n────────────────────────\n\nDifficulty\n\nQuestion 1 → very easy\n\nQuestion 2 → easy\n\nQuestion 3 → medium\n\nQuestion 4 → medium\n\nQuestion 5 → the most challenging\n\n────────────────────────\n\nQuestion rules\n\n• Every target expression must appear at least once.\n\n• At least ONE task must require the student to write their own answer.\n\n• Multiple choice distractors should be believable.\n\n• Whenever possible, use other target expressions as distractors.\n\n• Avoid obviously wrong answers.\n\n• Contexts should feel like real adult life:\nwork, relationships, travel, technology, films, social media, hobbies, money, everyday conversations.\n\n• Vary sentence openings.\n\n• Avoid repeating wording like:\n\"Fill in the blank...\"\n\"Choose...\"\n\"What would you say...\"\n\n────────────────────────\n\nOUTPUT FORMAT\n\nWrite ONE friendly introductory sentence.\n\nThen the five numbered questions.\n\nAt the end write:\n\nAnswers\n\nand provide a clean answer key only.\n\nDo not explain why the answers are correct.\n\nDo not use Markdown.\n\nTarget vocabulary:\n\n${words.join('\\n')}\n`;\n\n  out.push({\n    json: {\n      student,\n      count: words.length,\n      rowNumbers: byStudent[student].rowNumbers,\n      today,\n      promptText: prompt\n    }\n  });\n}\n\nreturn out;"
+      },
+      "id": "df36ecc9-1951-4dff-9f56-cee70fae6bdf",
+      "name": "Собрать квизы",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openRouterApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"model\": \"anthropic/claude-sonnet-4.6\", \"messages\": [ { \"role\": \"user\", \"content\": {{ JSON.stringify($json.promptText) }} } ] }",
+        "options": {}
+      },
+      "id": "7bb1bf79-2951-4899-9c94-8dce1bf4c96f",
+      "name": "Claude (OpenRouter)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        0
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "71iBTstu080ex2k9",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "133724864",
+        "text": "={{ '🔁 Recycling · ' + $('Собрать квизы').item.json.student + '\\n\\n' + $json.choices[0].message.content }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "dfba013f-d5c7-418d-9a51-941eb55c4497",
+      "name": "В drafts",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        960,
+        0
+      ],
+      "webhookId": "3942742a-2966-4e4e-b371-1e95b278382e",
+      "credentials": {
+        "telegramApi": {
+          "id": "XmQxotP9dSDoKiqa",
+          "name": "Telegram account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const students = $('Собрать квизы').all().map(i => i.json);\n\nconst out = [];\n\nfor (const s of students) {\n  const today = s.today;\n\n  for (const rn of (s.rowNumbers || [])) {\n    out.push({\n      json: {\n        row_number: rn,\n        \"Квиз\": today,\n        \"В квиз\": false\n      }\n    });\n  }\n}\n\nreturn out;"
+      },
+      "id": "ea061e87-dcef-4149-917b-d5d9046c24a3",
+      "name": "Строки для апдейта",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "13_souJ2oyvsf2F6wqsn8YybF72Nveh7bnv6LolIgV4U",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1493615087,
+          "mode": "list",
+          "cachedResultName": "Recycling",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/13_souJ2oyvsf2F6wqsn8YybF72Nveh7bnv6LolIgV4U/edit#gid=1493615087"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{$json.row_number}}",
+            "Квиз": "={{$json[\"Квиз\"]}}",
+            "В Квиз": "={{$json[\"В квиз\"]}}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Дата",
+              "displayName": "Дата",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Ученик",
+              "displayName": "Ученик",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Тема урока",
+              "displayName": "Тема урока",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Слово / фраза",
+              "displayName": "Слово / фраза",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Добавлено в",
+              "displayName": "Добавлено в",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Повторено",
+              "displayName": "Повторено",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Квиз",
+              "displayName": "Квиз",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "В Квиз",
+              "displayName": "В Квиз",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "ed64a63e-eb7f-4a5a-b247-0319273791c5",
+      "name": "Отметить «Квиз»",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1568,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WboljMyc67lphPqd",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Раз в неделю": {
+      "main": [
+        [
+          {
+            "node": "Читать лексику",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Читать лексику": {
+      "main": [
+        [
+          {
+            "node": "Собрать квизы",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Собрать квизы": {
+      "main": [
+        [
+          {
+            "node": "Claude (OpenRouter)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude (OpenRouter)": {
+      "main": [
+        [
+          {
+            "node": "В drafts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "В drafts": {
+      "main": [
+        [
+          {
+            "node": "Строки для апдейта",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Строки для апдейта": {
+      "main": [
+        [
+          {
+            "node": "Отметить «Квиз»",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b045d5b4-1870-4de9-b06f-9f399ab85f83",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "cc7441e9aef2454edde70f1550c40bb6c7262d9818c45fee317522b4489db8a3"
+  },
+  "id": "phXtey6iBFcjvOis",
+  "tags": [
+    {
+      "updatedAt": "2026-06-19T19:09:41.791Z",
+      "createdAt": "2026-06-19T19:09:41.791Z",
+      "id": "WHXVU5fsAZeJMgFV",
+      "name": "recycling"
+    }
+  ]
+}
